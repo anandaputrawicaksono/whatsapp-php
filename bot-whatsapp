@@ -1,0 +1,121 @@
+<?php
+require 'vendor/autoload.php';
+
+use Facebook\WebDriver\Chrome\ChromeOptions;
+use Facebook\WebDriver\Remote\DesiredCapabilities;
+use Facebook\WebDriver\Remote\RemoteWebDriver;
+use Facebook\WebDriver\WebDriverBy;
+use Facebook\WebDriver\WebDriverExpectedCondition;
+use Facebook\WebDriver\WebDriverWait;
+use Facebook\WebDriver\WebDriverKeys;
+
+// Set timezone default ke Balikpapan (WITA / UTC+8)
+date_default_timezone_set('Asia/Makassar');
+
+function removeNonBMPCharacters($text) {
+    return preg_replace('/[\x{10000}-\x{10FFFF}]/u', '', $text);
+}
+
+function sendWhatsAppGroupMessage($group_name, $message) {
+    // Hubungkan Selenium ke Chrome yang sudah dibuka dengan mode debugging
+    $options = new ChromeOptions();
+    $options->setExperimentalOption("debuggerAddress", "127.0.0.1:9222");
+
+    $capabilities = DesiredCapabilities::chrome();
+    $capabilities->setCapability(ChromeOptions::CAPABILITY, $options);
+
+    // Koneksi ke ChromeDriver yang sudah berjalan
+    $driver = RemoteWebDriver::create("http://localhost:9515", $capabilities);
+
+    echo "✅ Berhasil terhubung ke Chrome yang sudah terbuka...\n";
+
+    // Buka WhatsApp Web
+    $driver->get("https://web.whatsapp.com/");
+    sleep(5); // Tunggu halaman termuat
+
+    // Tunggu sampai WhatsApp Web siap
+    $wait = new WebDriverWait($driver, 10);
+    
+    try {
+        // Cari kotak pencarian
+        $search_box = $wait->until(
+            WebDriverExpectedCondition::presenceOfElementLocated(
+                WebDriverBy::xpath('//div[@contenteditable="true"][@data-tab="3"]')
+            )
+        );
+    } catch (\Exception $e) {
+        die("❌ Gagal menemukan kotak pencarian. Pastikan WhatsApp Web terbuka dengan benar.\n");
+    }
+
+    echo "🔍 Mencari grup: $group_name...\n";
+    $search_box->sendKeys($group_name);
+    sleep(2); // Tunggu hasil pencarian muncul
+
+    // Tekan ENTER agar langsung membuka grup
+    $search_box->sendKeys(WebDriverKeys::ENTER);
+    sleep(3); // Tunggu hingga chat terbuka
+
+    // Tunggu sampai chat benar-benar terbuka
+    try {
+        $message_box = $wait->until(
+            WebDriverExpectedCondition::presenceOfElementLocated(
+                WebDriverBy::xpath('//div[@contenteditable="true"][@data-tab="10"]')
+            )
+        );
+    } catch (\Exception $e) {
+        die("❌ Gagal menemukan kotak pesan. Pastikan chat grup terbuka.\n");
+    }
+
+    // Filter pesan agar tidak mengandung karakter di luar BMP
+    $message = removeNonBMPCharacters($message);
+
+    echo "⌨️ Mengetik pesan...\n";
+    $message_box->sendKeys($message);
+    sleep(1);
+
+    // Klik tombol kirim
+    try {
+        $send_button = $wait->until(
+            WebDriverExpectedCondition::elementToBeClickable(
+                WebDriverBy::xpath('//span[@data-icon="send"]')
+            )
+        );
+        $send_button->click();
+    } catch (\Exception $e) {
+        die("❌ Gagal menemukan tombol kirim. Coba periksa apakah elemen berubah.\n");
+    }
+
+    sleep(2);
+    echo "✅ Pesan berhasil dikirim ke grup!\n";
+}
+
+// **Langkah tambahan: Jalankan Chrome dengan mode debugging terlebih dahulu**
+// 1. Tutup semua jendela Chrome.
+// 2. Jalankan perintah ini di terminal agar Chrome bisa dikontrol Selenium:
+//    ```sh
+//    /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+//    --remote-debugging-port=9222 --user-data-dir=/tmp/selenium
+//    ```
+
+// Nama grup WhatsApp & Pesan yang ingin dikirim
+$group_name = "Anomali lagi nge GYM";  // Ganti dengan nama grup yang benar
+$pesan = "Halo grup! Ini adalah pesan otomatis dari bot PHP 😊";
+
+// Atur waktu pengiriman pesan
+$target_time = "23:54";  // Ganti dengan jam yang diinginkan (format 24 jam, WITA / Balikpapan)
+
+// Looping hingga waktu yang ditentukan tercapai
+while (true) {
+    $current_time = date('H:i'); // Ambil waktu saat ini dalam format HH:MM
+    echo "⏳ Menunggu hingga $target_time WITA... (Sekarang: $current_time WITA)\n";
+
+    if ($current_time == $target_time) {
+        echo "🚀 Waktunya mengirim pesan!\n";
+        sendWhatsAppGroupMessage($group_name, $pesan);
+        break; // Keluar dari loop setelah pesan dikirim
+    }
+
+    sleep(30); // Cek waktu setiap 30 detik untuk menghindari penggunaan CPU berlebihan
+}
+
+?>
